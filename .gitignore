@@ -27,3 +27,8 @@ Thumbs.db
 *.sqlite
 *.db
 scratch/
+
+# SQLite journal sidecars
+*.db-wal
+*.db-shm
+*.db-journal

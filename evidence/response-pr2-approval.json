@@ -1,0 +1,4 @@
+{
+  "choice": "approve",
+  "feedback": "End-to-end lab demo run by the assistant at the user's request. The Q&A answers are recommendations based on the supplied diff; organizational policies and author intent remain unconfirmed. Security blockers remain unresolved. This approval authorizes posting the review comment only, not merging or deploying the PR."
+}

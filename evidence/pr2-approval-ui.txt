@@ -1,0 +1,8 @@
+Approval requested — confidence 35%
+Adds user login, token-based auth, and cloud sync to a task tracker. Introduces password hashing, token issuance/storage, a login CLI command, a sync command that POSTs tasks to an HTTP endpoint, and a user_id column on the tasks table.
+- **[blocker]** `tasktrack/storage.py:27` — SQL injection: title and user_id are interpolated directly into the SQL string. Use parameterized queries: INSERT INTO tasks (title, user_id) VALUES (?, ?) with (title, user_id).
+- **[blocker]** `tasktrack/auth.py:6` — Passwords are hashed with unsalted MD5, which is fast and unsuitable for password storage. Replace with bcrypt, Argon2id, or PBKDF2 with a per-user salt.
+- **[issue]** `tasktrack/auth.py:11` — Token issuance uses SHA1 over a seed containing os.getpid(), making tokens predictable. Use secrets.token_urlsafe() or another cryptographically random token instead.
+- **[issue]** `tasktrack/auth.py:18` — save_token writes the token to ~/.tasktrack_token with default filesystem permissions, potentially world-readable. Open the file with mode 0o600.
+- **[blocker]** `tasktrack/sync.py:7` — SYNC_URL uses http://, sending the Bearer token and all task data in cleartext. Use https:// with TLS verification; also wrap Storage in a context manager or try/finally to avoid a connection leak.
+- **[suggestion]** `tasktrack/cli.py:39` — If push_all() raises, store.close() is never reached. Use try/finally or make Storage a context manager so the DB connection is always released.

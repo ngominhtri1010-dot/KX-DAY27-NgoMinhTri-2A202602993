@@ -1,0 +1,24 @@
+───────────────────────── Replay lab-demo-20261016-pr2 ─────────────────────────
+2026-10-16T02:27:04.976013+00:00  fetch_pr           conf=0.00 risk=med  
+decision=pending    reviewer=-               1754ms  Fetched 4 files, 
+head=501f95e
+2026-10-16T02:27:22.806399+00:00  analyze            conf=0.35 risk=high 
+decision=pending    reviewer=-              17816ms  Multiple critical security 
+flaws (SQL injection, unsalted MD
+2026-10-16T02:27:22.814348+00:00  route              conf=0.35 risk=high 
+decision=escalate   reviewer=-                  1ms  escalate
+2026-10-16T02:27:22.823806+00:00  escalate           conf=0.35 risk=high 
+decision=pending    reviewer=-                  3ms  
+2026-10-16T02:28:01.216215+00:00  escalate           conf=0.35 risk=high 
+decision=escalate   reviewer=ngominhtri1010-dot     1ms  {'Is HTTPS/TLS 
+available for the sync endpoint, and what cer
+2026-10-16T02:28:07.904798+00:00  synthesize         conf=0.35 risk=high 
+decision=pending    reviewer=-               6683ms  Multiple critical security 
+flaws (SQL injection, unsalted MD
+2026-10-16T02:28:07.911287+00:00  human_approval     conf=0.35 risk=high 
+decision=pending    reviewer=-                  1ms  
+2026-10-16T02:29:13.848900+00:00  human_approval     conf=0.35 risk=high 
+decision=approve    reviewer=ngominhtri1010-dot     1ms  End-to-end lab demo run
+by the assistant at the user's reque
+2026-10-16T02:29:15.024603+00:00  commit             conf=0.35 risk=high 
+decision=approve    reviewer=ngominhtri1010-dot  1170ms  committed

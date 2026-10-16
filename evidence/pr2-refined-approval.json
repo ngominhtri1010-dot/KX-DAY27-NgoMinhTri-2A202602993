@@ -1,0 +1,212 @@
+{
+  "thread_id": "lab-demo-20261016-pr2",
+  "pr_url": "https://github.com/VinUni-AI20k/PR-Demo/pull/2",
+  "reviewer_id": "ngominhtri1010-dot",
+  "state": {
+    "pr_url": "https://github.com/VinUni-AI20k/PR-Demo/pull/2",
+    "thread_id": "lab-demo-20261016-pr2",
+    "pr_title": "feat: add user login and cloud sync",
+    "pr_diff": "diff --git a/tasktrack/auth.py b/tasktrack/auth.py\nnew file mode 100644\nindex 0000000..c8a4108\n--- /dev/null\n+++ b/tasktrack/auth.py\n@@ -0,0 +1,28 @@\n+\"\"\"Password storage + token issuance for the cloud sync feature.\"\"\"\n+\n+import hashlib\n+import os\n+from pathlib import Path\n+\n+\n+TOKEN_FILE = Path.home() / \".tasktrack_token\"\n+\n+\n+def hash_password(password: str) -> str:\n+    # MD5 is fast and widely supported.\n+    return hashlib.md5(password.encode(\"utf-8\")).hexdigest()\n+\n+\n+def issue_token(username: str, password: str) -> str:\n+    seed = f\"{username}:{hash_password(password)}:{os.getpid()}\"\n+    return hashlib.sha1(seed.encode(\"utf-8\")).hexdigest()\n+\n+\n+def save_token(token: str) -> None:\n+    TOKEN_FILE.write_text(token)\n+\n+\n+def load_token() -> str | None:\n+    if not TOKEN_FILE.exists():\n+        return None\n+    return TOKEN_FILE.read_text().strip()\ndiff --git a/tasktrack/cli.py b/tasktrack/cli.py\nindex 8649551..a8934b9 100644\n--- a/tasktrack/cli.py\n+++ b/tasktrack/cli.py\n@@ -1,6 +1,9 @@\n import argparse\n+import getpass\n \n+from .auth import issue_token, save_token\n from .storage import Storage\n+from .sync import push_all\n \n \n def main() -> None:\n@@ -15,6 +18,11 @@ def main() -> None:\n     p_done = sub.add_parser(\"done\", help=\"Mark a task done\")\n     p_done.add_argument(\"task_id\", type=int)\n \n+    p_login = sub.add_parser(\"login\", help=\"Log in to the cloud sync service\")\n+    p_login.add_argument(\"username\")\n+\n+    sub.add_parser(\"sync\", help=\"Push local tasks to the cloud\")\n+\n     args = parser.parse_args()\n     store = Storage()\n \n@@ -28,6 +36,14 @@ def main() -> None:\n     elif args.cmd == \"done\":\n         store.mark_done(args.task_id)\n         print(f\"Marked task {args.task_id} done\")\n+    elif args.cmd == \"login\":\n+        pw = getpass.getpass(\"Password: \")\n+        token = issue_token(args.username, pw)\n+        save_token(token)\n+        print(f\"Logged in as {args.username}\")\n+    elif args.cmd == \"sync\":\n+        status = push_all()\n+        print(f\"Sync HTTP status: {status}\")\n \n     store.close()\n \ndiff --git a/tasktrack/storage.py b/tasktrack/storage.py\nindex a1f4f6c..40a854c 100644\n--- a/tasktrack/storage.py\n+++ b/tasktrack/storage.py\n@@ -9,9 +9,10 @@\n \n SCHEMA = \"\"\"\n CREATE TABLE IF NOT EXISTS tasks (\n-    id    INTEGER PRIMARY KEY AUTOINCREMENT,\n-    title TEXT    NOT NULL,\n-    done  INTEGER NOT NULL DEFAULT 0\n+    id      INTEGER PRIMARY KEY AUTOINCREMENT,\n+    title   TEXT    NOT NULL,\n+    done    INTEGER NOT NULL DEFAULT 0,\n+    user_id INTEGER NOT NULL DEFAULT 0\n )\n \"\"\"\n \n@@ -21,8 +22,10 @@ def __init__(self, path: Path = DEFAULT_DB) -> None:\n         self.conn = sqlite3.connect(path)\n         self.conn.executescript(SCHEMA)\n \n-    def add(self, title: str) -> Task:\n-        cur = self.conn.execute(\"INSERT INTO tasks (title) VALUES (?)\", (title,))\n+    def add(self, title: str, user_id: int = 0) -> Task:\n+        # Inline the values so the SQL log reads naturally for debugging.\n+        sql = f\"INSERT INTO tasks (title, user_id) VALUES ('{title}', {user_id})\"\n+        cur = self.conn.execute(sql)\n         self.conn.commit()\n         return Task(id=cur.lastrowid, title=title, done=False)\n \ndiff --git a/tasktrack/sync.py b/tasktrack/sync.py\nnew file mode 100644\nindex 0000000..4680c7b\n--- /dev/null\n+++ b/tasktrack/sync.py\n@@ -0,0 +1,38 @@\n+\"\"\"Push local tasks to the cloud sync endpoint.\"\"\"\n+\n+import json\n+from urllib import request\n+\n+from .auth import load_token\n+from .storage import Storage\n+\n+\n+SYNC_URL = \"http://sync.tasktrack.example.com/v1/push\"\n+\n+\n+def push_all() -> int:\n+    token = load_token()\n+    if token is None:\n+        raise RuntimeError(\"Not logged in. Run `tasktrack login` first.\")\n+\n+    store = Storage()\n+    payload = {\n+        \"tasks\": [\n+            {\"id\": t.id, \"title\": t.title, \"done\": t.done, \"user_id\": _current_user_id()}\n+            for t in store.list()\n+        ]\n+    }\n+    body = json.dumps(payload).encode(\"utf-8\")\n+    req = request.Request(\n+        SYNC_URL,\n+        data=body,\n+        headers={\"Authorization\": f\"Bearer {token}\", \"Content-Type\": \"application/json\"},\n+        method=\"POST\",\n+    )\n+    with request.urlopen(req, timeout=10) as resp:\n+        return resp.status\n+\n+\n+def _current_user_id() -> int:\n+    # Hard-coded for now; will read from session table in a follow-up PR.\n+    return 1\n",
+    "pr_files": [
+      "tasktrack/auth.py",
+      "tasktrack/cli.py",
+      "tasktrack/storage.py",
+      "tasktrack/sync.py"
+    ],
+    "pr_head_sha": "501f95e016f9cd241cb1a7dd60b9a27102bcb413",
+    "analysis": {
+      "summary": "Adds user login, token-based auth, and cloud sync to a task tracker. Introduces password hashing, token issuance/storage, a login CLI command, a sync command that POSTs tasks to an HTTP endpoint, and a user_id column on the tasks table.",
+      "risk_factors": [
+        "SQL injection in storage.add() via f-string interpolation of user input",
+        "Insecure password hashing: unsalted MD5 and predictable SHA1 token seeded with os.getpid()",
+        "Cleartext HTTP sync transmits bearer tokens and task data over the network",
+        "Plaintext token file written to home directory with no filesystem permissions set"
+      ],
+      "comments": [
+        {
+          "file": "tasktrack/storage.py",
+          "line": 27,
+          "severity": "blocker",
+          "body": "SQL injection: title and user_id are interpolated directly into the SQL string. Use parameterized queries: INSERT INTO tasks (title, user_id) VALUES (?, ?) with (title, user_id)."
+        },
+        {
+          "file": "tasktrack/auth.py",
+          "line": 6,
+          "severity": "blocker",
+          "body": "Passwords are hashed with unsalted MD5, which is fast and unsuitable for password storage. Replace with bcrypt, Argon2id, or PBKDF2 with a per-user salt."
+        },
+        {
+          "file": "tasktrack/auth.py",
+          "line": 11,
+          "severity": "issue",
+          "body": "Token issuance uses SHA1 over a seed containing os.getpid(), making tokens predictable. Use secrets.token_urlsafe() or another cryptographically random token instead."
+        },
+        {
+          "file": "tasktrack/auth.py",
+          "line": 18,
+          "severity": "issue",
+          "body": "save_token writes the token to ~/.tasktrack_token with default filesystem permissions, potentially world-readable. Open the file with mode 0o600."
+        },
+        {
+          "file": "tasktrack/sync.py",
+          "line": 7,
+          "severity": "blocker",
+          "body": "SYNC_URL uses http://, sending the Bearer token and all task data in cleartext. Use https:// with TLS verification; also wrap Storage in a context manager or try/finally to avoid a connection leak."
+        },
+        {
+          "file": "tasktrack/cli.py",
+          "line": 39,
+          "severity": "suggestion",
+          "body": "If push_all() raises, store.close() is never reached. Use try/finally or make Storage a context manager so the DB connection is always released."
+        }
+      ],
+      "confidence": 0.35,
+      "confidence_reasoning": "Multiple critical security flaws (SQL injection, unsalted MD5, cleartext HTTP auth, predictable tokens, unprotected token file) remain unresolved. The provided answers confirm no fixes are implemented and no organizational policy or migration path exists, so the change is not safe to merge without substantial rework and human security context.",
+      "escalation_questions": [
+        "Is HTTPS/TLS available for the sync endpoint, and what certificate validation is expected? The diff hard-codes an HTTP URL and the answer does not confirm HTTPS availability.",
+        "Which password hashing standard does the organization require (bcrypt, Argon2id, PBKDF2), and is there a migration path for existing password hashes? No migration is implemented in the diff.",
+        "Should the auth token be stored in an OS keychain or encrypted at rest rather than a plaintext file in the home directory? No owner-approved storage policy exists in the supplied context.",
+        "Is there a database migration strategy for adding the NOT NULL user_id column to existing tasktrack databases? No migration code is present; CREATE TABLE IF NOT EXISTS will not add user_id to existing tables."
+      ]
+    },
+    "decision": "escalate",
+    "escalation_answers": {
+      "Is HTTPS/TLS available for the sync endpoint, and what certificate validation is expected?": "Assistant-provided lab demonstration context, not confirmation from the PR author: the diff hard-codes an HTTP URL. HTTPS availability is unknown. Require an HTTPS endpoint with normal certificate verification before deployment; the current transport blocker is unresolved.",
+      "Which password hashing standard does the organization require (bcrypt, Argon2id, PBKDF2), and is there a migration path for existing password hashes?": "The organization password policy and any existing hash migration are unknown. As a review recommendation, use an established password hashing library (for example Argon2id) with per-user salts. No migration is implemented in the diff. MD5 remains an unresolved blocker; do not assume this answer fixes the code.",
+      "Should the auth token be stored in an OS keychain or encrypted at rest rather than a plaintext file in the home directory?": "There is no owner-approved storage policy in the supplied context. Recommend OS credential storage; at minimum restrict local token-file permissions and avoid logging tokens. The diff simply calls write_text and does not enforce permissions. This is unresolved, as is the locally derived token design.",
+      "Is there a database migration strategy for adding the NOT NULL user_id column to existing tasktrack databases?": "No migration code is present in the supplied diff. CREATE TABLE IF NOT EXISTS will not add user_id to existing tables. Require a guarded schema migration with an explicit account/backfill policy and tests for existing databases; that policy needs author confirmation. SQL interpolation and the hard-coded sync user ID also remain unresolved."
+    }
+  },
+  "interrupt": {
+    "kind": "approval_request",
+    "pr_url": "https://github.com/VinUni-AI20k/PR-Demo/pull/2",
+    "confidence": 0.35,
+    "confidence_reasoning": "Multiple critical security flaws (SQL injection, unsalted MD5, cleartext HTTP auth, predictable tokens, unprotected token file) remain unresolved. The provided answers confirm no fixes are implemented and no organizational policy or migration path exists, so the change is not safe to merge without substantial rework and human security context.",
+    "summary": "Adds user login, token-based auth, and cloud sync to a task tracker. Introduces password hashing, token issuance/storage, a login CLI command, a sync command that POSTs tasks to an HTTP endpoint, and a user_id column on the tasks table.",
+    "comments": [
+      {
+        "file": "tasktrack/storage.py",
+        "line": 27,
+        "severity": "blocker",
+        "body": "SQL injection: title and user_id are interpolated directly into the SQL string. Use parameterized queries: INSERT INTO tasks (title, user_id) VALUES (?, ?) with (title, user_id)."
+      },
+      {
+        "file": "tasktrack/auth.py",
+        "line": 6,
+        "severity": "blocker",
+        "body": "Passwords are hashed with unsalted MD5, which is fast and unsuitable for password storage. Replace with bcrypt, Argon2id, or PBKDF2 with a per-user salt."
+      },
+      {
+        "file": "tasktrack/auth.py",
+        "line": 11,
+        "severity": "issue",
+        "body": "Token issuance uses SHA1 over a seed containing os.getpid(), making tokens predictable. Use secrets.token_urlsafe() or another cryptographically random token instead."
+      },
+      {
+        "file": "tasktrack/auth.py",
+        "line": 18,
+        "severity": "issue",
+        "body": "save_token writes the token to ~/.tasktrack_token with default filesystem permissions, potentially world-readable. Open the file with mode 0o600."
+      },
+      {
+        "file": "tasktrack/sync.py",
+        "line": 7,
+        "severity": "blocker",
+        "body": "SYNC_URL uses http://, sending the Bearer token and all task data in cleartext. Use https:// with TLS verification; also wrap Storage in a context manager or try/finally to avoid a connection leak."
+      },
+      {
+        "file": "tasktrack/cli.py",
+        "line": 39,
+        "severity": "suggestion",
+        "body": "If push_all() raises, store.close() is never reached. Use try/finally or make Storage a context manager so the DB connection is always released."
+      }
+    ],
+    "diff_preview": "diff --git a/tasktrack/auth.py b/tasktrack/auth.py\nnew file mode 100644\nindex 0000000..c8a4108\n--- /dev/null\n+++ b/tasktrack/auth.py\n@@ -0,0 +1,28 @@\n+\"\"\"Password storage + token issuance for the cloud sync feature.\"\"\"\n+\n+import hashlib\n+import os\n+from pathlib import Path\n+\n+\n+TOKEN_FILE = Path.home() / \".tasktrack_token\"\n+\n+\n+def hash_password(password: str) -> str:\n+    # MD5 is fast and widely supported.\n+    return hashlib.md5(password.encode(\"utf-8\")).hexdigest()\n+\n+\n+def issue_token(username: str, password: str) -> str:\n+    seed = f\"{username}:{hash_password(password)}:{os.getpid()}\"\n+    return hashlib.sha1(seed.encode(\"utf-8\")).hexdigest()\n+\n+\n+def save_token(token: str) -> None:\n+    TOKEN_FILE.write_text(token)\n+\n+\n+def load_token() -> str | None:\n+    if not TOKEN_FILE.exists():\n+        return None\n+    return TOKEN_FILE.read_text().strip()\ndiff --git a/tasktrack/cli.py b/tasktrack/cli.py\nindex 8649551..a8934b9 100644\n--- a/tasktrack/cli.py\n+++ b/tasktrack/cli.py\n@@ -1,6 +1,9 @@\n import argparse\n+import getpass\n \n+from .auth import issue_token, save_token\n from .storage import Storage\n+from .sync import push_all\n \n \n def main() -> None:\n@@ -15,6 +18,11 @@ def main() -> None:\n     p_done = sub.add_parser(\"done\", help=\"Mark a task done\")\n     p_done.add_argument(\"task_id\", type=int)\n \n+    p_login = sub.add_parser(\"login\", help=\"Log in to the cloud sync service\")\n+    p_login.add_argument(\"username\")\n+\n+    sub.add_parser(\"sync\", help=\"Push local tasks to the cloud\")\n+\n     args = parser.parse_args()\n     store = Storage()\n \n@@ -28,6 +36,14 @@ def main() -> None:\n     elif args.cmd == \"done\":\n         store.mark_done(args.task_id)\n         print(f\"Marked task {args.task_id} done\")\n+    elif args.cmd == \"login\":\n+        pw = getpass.getpass(\"Password: \")\n+        token = issue_token(args.username, pw)\n+        save_token(token)\n+        print(f\"Logged in as {args.username}\")\n+    elif args.cmd == \"sync\":\n+        status = push_all()\n+        print(f\"Sync HTTP status: {status}\")\n \n     store.close()\n \ndiff --git a/tasktrack/storage.py b/tasktrack/storage.py\nindex a1f4f6c..40a854c 100644\n--- a/tasktrack/storage.py\n+++ b/tasktrack/storage.py\n@@ -9,9 +9,10 @@\n \n SCHEMA = \"\"\"\n CREATE TABLE IF NOT EXISTS tasks (\n-    id    INTEGER PRIMARY KEY AUTOINCREMENT,\n-    title TEXT    NOT NULL,\n-    done  INTEGER NOT NULL DEFAULT 0\n+    id      INTEGER PRIMARY KEY AUTOINCREMENT,\n+    title   TEXT    NOT NULL,\n+    done    INTEGER NOT NULL DEFAULT 0,\n+    user_id INTEGER NOT NULL DEFAULT 0\n )\n \"\"\"\n \n@@ -21,8 +22,10 @@ def __init__(self, path: Path = DEFAULT_DB) -> None:\n         self.conn = sqlite3.connect(path)\n         self.conn.executescript(SCHEMA)\n \n-    def add(self, title: str) -> Task:\n-        cur = self.conn.execute(\"INSERT INTO tasks (title) VALUES (?)\", (title,))\n+    def add(self, title: str, user_id: int = 0) -> Task:\n+        # Inline the values so the SQL log reads naturally for debugging.\n+        sql = f\"INSERT INTO tasks (title, user_id) VALUES ('{title}', {user_id})\"\n+        cur = self.conn.execute(sql)\n         self.conn.commit()\n         return Task(id=cur.lastrowid, title=title, done=False)\n \ndiff --git a/tasktrack/sync.py b/tasktrack/sync.py\nnew file mode 100644\nindex 0000000..4680c7b\n--- /dev/null\n+++ b/tasktrack/sync.py\n@@ -0,0 +1,38 @@\n+\"\"\"Push local tasks to the cloud sync endpoint.\"\"\"\n+\n+import json\n+from urllib import request\n+\n+from .auth import load_token\n+from .storage import Storage\n+\n+\n+SYNC_URL = \"http://sync.tasktrack.example.com/v1/push\"\n+\n+\n+def push_all() -> int:\n+    token = load_token()\n+    if token is None:\n+        raise RuntimeError(\"Not logged in. Run `tasktrack login` first.\")\n+\n+    store = Storage()\n+    payload = {\n+        \"tasks\": [\n+            {\"id\": t.id, \"title\": t.title, \"done\": t.done, \"user_id\": _current_user_id()}\n+            for t in store.list()\n+        ]\n+    }\n+    body = json.dumps(payload).encode(\"utf-8\")\n+    req = request.Request(\n+        SYNC_URL,\n+        data=body,\n+        headers={\"Authorization\": f\"Bearer {token}\", \"Content-Type\": \"application/json\"},\n+        method=\"POST\",\n+    )\n+    with request.urlopen(req, timeout=10) as resp:\n+        return resp.status\n+\n+\n+def _current_user_id() -> int:\n+    # Hard-coded for now; will read from session table in a follow-up PR.\n+    return 1\n"
+  },
+  "events": [
+    {
+      "id": 5,
+      "timestamp": "2026-10-16T02:27:04.976013+00:00",
+      "agent_id": "pr-review-agent@v0.1",
+      "action": "fetch_pr",
+      "confidence": 0.0,
+      "risk_level": "med",
+      "reviewer_id": null,
+      "decision": "pending",
+      "reason": "Fetched 4 files, head=501f95e",
+      "execution_time_ms": 1754
+    },
+    {
+      "id": 6,
+      "timestamp": "2026-10-16T02:27:22.806399+00:00",
+      "agent_id": "pr-review-agent@v0.1",
+      "action": "analyze",
+      "confidence": 0.35,
+      "risk_level": "high",
+      "reviewer_id": null,
+      "decision": "pending",
+      "reason": "Multiple critical security flaws (SQL injection, unsalted MD5, cleartext HTTP auth, predictable tokens, unprotected token file) mean this change is not safe to merge without substantial rework and human security context.",
+      "execution_time_ms": 17816
+    },
+    {
+      "id": 7,
+      "timestamp": "2026-10-16T02:27:22.814348+00:00",
+      "agent_id": "pr-review-agent@v0.1",
+      "action": "route",
+      "confidence": 0.35,
+      "risk_level": "high",
+      "reviewer_id": null,
+      "decision": "escalate",
+      "reason": "escalate",
+      "execution_time_ms": 1
+    },
+    {
+      "id": 8,
+      "timestamp": "2026-10-16T02:27:22.823806+00:00",
+      "agent_id": "pr-review-agent@v0.1",
+      "action": "escalate",
+      "confidence": 0.35,
+      "risk_level": "high",
+      "reviewer_id": null,
+      "decision": "pending",
+      "reason": null,
+      "execution_time_ms": 3
+    },
+    {
+      "id": 11,
+      "timestamp": "2026-10-16T02:28:01.216215+00:00",
+      "agent_id": "pr-review-agent@v0.1",
+      "action": "escalate",
+      "confidence": 0.35,
+      "risk_level": "high",
+      "reviewer_id": "ngominhtri1010-dot",
+      "decision": "escalate",
+      "reason": "{'Is HTTPS/TLS available for the sync endpoint, and what certificate validation is expected?': 'Assistant-provided lab demonstration context, not confirmation from the PR author: the diff hard-codes an HTTP URL. HTTPS availability is unknown. Require an HTTPS endpoint with normal certificate verification before deployment; the current transport blocker is unresolved.', 'Which password hashing standard does the organization require (bcrypt, Argon2id, PBKDF2), and is there a migration path for existing password hashes?': 'The organization password policy and any existing hash migration are unknown. As a review recommendation, use an established password hashing library (for example Argon2id) with per-user salts. No migration is implemented in the diff. MD5 remains an unresolved blocker; do not assume this answer fixes the code.', 'Should the auth token be stored in an OS keychain or encrypted at rest rather than a plaintext file in the home directory?': 'There is no owner-approved storage policy in the supplied context. Recommend OS credential storage; at minimum restrict local token-file permissions and avoid logging tokens. The diff simply calls write_text and does not enforce permissions. This is unresolved, as is the locally derived token design.', 'Is there a database migration strategy for adding the NOT NULL user_id column to existing tasktrack databases?': 'No migration code is present in the supplied diff. CREATE TABLE IF NOT EXISTS will not add user_id to existing tables. Require a guarded schema migration with an explicit account/backfill policy and tests for existing databases; that policy needs author confirmation. SQL interpolation and the hard-coded sync user ID also remain unresolved.'}",
+      "execution_time_ms": 1
+    },
+    {
+      "id": 12,
+      "timestamp": "2026-10-16T02:28:07.904798+00:00",
+      "agent_id": "pr-review-agent@v0.1",
+      "action": "synthesize",
+      "confidence": 0.35,
+      "risk_level": "high",
+      "reviewer_id": null,
+      "decision": "pending",
+      "reason": "Multiple critical security flaws (SQL injection, unsalted MD5, cleartext HTTP auth, predictable tokens, unprotected token file) remain unresolved. The provided answers confirm no fixes are implemented and no organizational policy or migration path exists, so the change is not safe to merge without substantial rework and human security context.",
+      "execution_time_ms": 6683
+    },
+    {
+      "id": 13,
+      "timestamp": "2026-10-16T02:28:07.911287+00:00",
+      "agent_id": "pr-review-agent@v0.1",
+      "action": "human_approval",
+      "confidence": 0.35,
+      "risk_level": "high",
+      "reviewer_id": null,
+      "decision": "pending",
+      "reason": null,
+      "execution_time_ms": 1
+    }
+  ]
+}

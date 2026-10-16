@@ -1,0 +1,4 @@
+{
+  "choice": "edit",
+  "feedback": "### HITL lab review \u2014 PR #1 (confidence 64%)\n\nAdds task priority across the CLI, task model, and SQLite storage.\n\n- **[issue] `tasktrack/storage.py`**: `CREATE TABLE IF NOT EXISTS` does not migrate existing databases. Add a guarded `ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0` migration and test both existing and fresh databases.\n- **[suggestion] `tasktrack/cli.py`**: Validate `--priority` with `choices=[0, 1, 2]` so unsupported values cannot be stored.\n- **[suggestion] Tests**: Cover priority persistence, priority sorting, and the existing-database migration path.\n\n_Reviewed and edited by the assistant at the user's request as an end-to-end lab demonstration. This approves posting this review comment; it is not approval to merge the PR._"
+}

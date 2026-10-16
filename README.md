@@ -312,3 +312,37 @@ rm hitl_audit.db
 ```bash
 sqlite3 hitl_audit.db "SELECT action, confidence, decision, reviewer_id FROM audit_events ORDER BY id;"
 ```
+
+
+## Completed implementation and API budget
+
+Run `uv sync`, configure `.env`, then start `uv run streamlit run app.py`.
+All five exercises are implemented; the original exercise descriptions above
+remain as the assignment reference. Shared `common/` utilities are unchanged.
+
+- Default model: `nvidia/nemotron-3.5-super-vl:free` (availability can change).
+- Exercises 1–5 share `exercises/review_llm.py` and a local `llm_cache.db`.
+  Identical model, endpoint, prompt, title and diff reuse the validated analysis.
+  Changed diffs, model settings or Q&A produce a new cache key.
+- A new review needs one LLM request; escalation needs one additional request
+  after the human answers. Approval, rejection, manual editing, page rerenders,
+  and restoring a checkpoint require no new analysis requests.
+- Automatic retries are disabled. Errors are not cached; retry manually after
+  fixing the configuration or waiting for the provider's rate limit.
+- Output defaults to 3,000 tokens (`LLM_MAX_TOKENS`). Diffs over 60,000 characters
+  (`LLM_MAX_DIFF_CHARS`) are refused rather than silently truncated.
+- `LLM_CACHE_PATH` overrides the cache file. Delete only `llm_cache.db` to force
+  fresh analyses; keep `hitl_audit.db` to preserve session history.
+- **Edit** posts the replacement review text entered by the reviewer, without
+  an extra LLM call. Escalation always shows a final approval card after synthesis.
+- Recent sessions can be reopened from the sidebar; `?thread=<id>` restores the
+  session after a browser refresh. CLI restoration uses `--thread <id>` in exercise 4.
+- Set `GITHUB_USER` in `.env` to your GitHub username for human audit attribution.
+- Exercise 1 only reads and analyzes. Exercises 2–5 can post GitHub comments,
+  including automatically on the high-confidence branch.
+
+Offline verification (no API calls or GitHub writes):
+
+```bash
+uv run python -m unittest discover -s tests -v
+```

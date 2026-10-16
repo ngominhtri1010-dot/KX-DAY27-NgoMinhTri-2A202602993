@@ -1,0 +1,3 @@
+HITL PR Review Agent
+✓ committed — comment posted to https://github.com/VinUni-AI20k/PR-Demo/pull/1
+Adds an optional priority field (0=normal, 1=high, 2=urgent) to tasks across the CLI, data model, and SQLite storage layer, including a new column, CLI argument, display label, and priority-based default sort order.

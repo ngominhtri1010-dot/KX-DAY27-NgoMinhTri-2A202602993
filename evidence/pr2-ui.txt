@@ -1,0 +1,3 @@
+HITL PR Review Agent
+✓ committed — comment posted to https://github.com/VinUni-AI20k/PR-Demo/pull/2
+Adds user login, token-based auth, and cloud sync to a task tracker. Introduces password hashing, token issuance/storage, a login CLI command, a sync command that POSTs tasks to an HTTP endpoint, and a user_id column on the tasks table.
